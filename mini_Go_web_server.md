@@ -329,3 +329,81 @@ http.StatusServiceUnavailable
 ```
 
 ---
+---
+
+```go
+package main
+
+import (
+    "encoding/json"
+    "fmt"
+    "log"
+    "net/http"
+    "sync"
+)
+
+// Message represents a single message
+type Message struct {
+    Name    string `json:"name"`
+    Message string `json:"message"`
+}
+
+// Global slice to store messages
+var (
+    messages []Message
+    mu       sync.Mutex
+)
+
+// GET /messages — Return all messages
+func getMessages(w http.ResponseWriter, r *http.Request) {
+    w.Header().Set("Content-Type", "application/json")
+    w.WriteHeader(http.StatusOK)
+
+    mu.Lock()
+    defer mu.Unlock()
+    json.NewEncoder(w).Encode(messages)
+}
+
+// POST /messages — Accept a new message
+func postMessage(w http.ResponseWriter, r *http.Request) {
+    w.Header().Set("Content-Type", "application/json")
+
+    if r.Method != http.MethodPost {
+        http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
+        return
+    }
+
+    var msg Message
+    if err := json.NewDecoder(r.Body).Decode(&msg); err != nil {
+        http.Error(w, "Bad Request", http.StatusBadRequest)
+        return
+    }
+
+    if msg.Name == "" || msg.Message == "" {
+        http.Error(w, "Both 'name' and 'message' fields are required", http.StatusBadRequest)
+        return
+    }
+
+    mu.Lock()
+    messages = append(messages, msg)
+    mu.Unlock()
+
+    w.WriteHeader(http.StatusCreated)
+    json.NewEncoder(w).Encode(map[string]string{"status": "Message received!"})
+}
+
+func main() {
+    http.HandleFunc("/messages", func(w http.ResponseWriter, r *http.Request) {
+        if r.Method == http.MethodGet {
+            getMessages(w, r)
+        } else if r.Method == http.MethodPost {
+            postMessage(w, r)
+        } else {
+            http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
+        }
+    })
+
+    fmt.Println("Server started at http://localhost:8080")
+    log.Fatal(http.ListenAndServe(":8080", nil))
+}
+```
